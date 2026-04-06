@@ -1,0 +1,63 @@
+############################
+# Maven build output
+############################
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+############################
+# Java
+############################
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+############################
+# IntelliJ IDEA
+############################
+.idea/
+*.iml
+*.iws
+out/
+
+############################
+# VS Code
+############################
+.vscode/
+
+############################
+# Flink
+############################
+# Flink checkpoints, savepoints, logs
+**/checkpoint/
+**/checkpoints/
+**/savepoints/
+**/logs/
+
+############################
+# Kafka
+############################
+# Local Kafka data directories
+kafka-logs/
+zookeeper/
+zookeeper-data/
+zookeeper-log/
+
+############################
+# OS / Editor junk
+############################
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
+
+############################
+# OneDrive sync files
+############################
+*.lnk
+~$*
+*.tmp
+*.sync
+*.one
