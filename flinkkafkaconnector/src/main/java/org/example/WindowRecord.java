@@ -2,6 +2,7 @@ package org.example;
 
 import java.io.Serializable;
 
+//Ignore this program
 public class WindowRecord implements Serializable {
     public String windowStart;
     public String windowEnd;
