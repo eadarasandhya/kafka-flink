@@ -1,43 +1,78 @@
-version: "3.8"
-services:
-  otel-collector:
-    image: otel/opentelemetry-collector:0.144.0
-    container_name: otel-collector
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-    networks:
-      - flink-kafka-net
+version: "3.9"
 
-  jaeger:
-    image: jaegertracing/all-in-one:1.41
-    container_name: jaeger
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "14250:14250"  # Jaeger gRPC
-    networks:
-      - flink-kafka-net
-
-  loki:
-    image: grafana/loki:2.8.2
-    container_name: loki
-    ports:
-      - "3100:3100"
-    networks:
-      - flink-kafka-net
-
-  grafana:
-    image: grafana/grafana:10.0
-    container_name: grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    ports:
-      - "3000:3000"
-    networks:
-      - flink-kafka-net
-
+# Network shared by Flink + Kafka
 networks:
   flink-kafka-net:
-    external: true
+    driver: bridge
+
+services:
+
+  # ---------------------------------------------------------
+  # FLINK JOBMANAGER
+  # ---------------------------------------------------------
+  jobmanager:
+    image: flink:2.0.0-java17          # Flink 2.0.0 with Java 17
+    container_name: jobmanager
+    networks:
+      - flink-kafka-net
+    ports:
+      - "8081:8081"                    # Flink Web UI
+      - "6123:6123"                    # RPC port
+      - "6124:6124"                    # Data port
+    command: jobmanager                # Start JobManager process
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: jobmanager"   # Required for cluster discovery
+      FLINK_JM_JVM_OPTS: "--add-opens=java.base/java.util=ALL-UNNAMED"  # Fix Java module access
+    volumes:
+      - ./flink-conf:/opt/flink/conf          # Custom flink-conf.yaml
+      - ./flink-plugins/s3:/opt/flink/plugins/s3  # S3 plugin
+      - ./flink-lib:/opt/flink/lib            # Extra JARs (Parquet, Avro, etc.)
+
+  # ---------------------------------------------------------
+  # FLINK TASKMANAGER
+  # ---------------------------------------------------------
+  taskmanager:
+    image: flink:2.0.0-java17
+    container_name: taskmanager-test
+    networks:
+      - flink-kafka-net
+    depends_on:
+      - jobmanager                         # Start after JobManager
+    command: taskmanager                   # Start TaskManager process
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: jobmanager"   # Connect to JobManager
+      FLINK_TM_JVM_OPTS: "--add-opens=java.base/java.util=ALL-UNNAMED"
+    volumes:
+      - ./flink-conf:/opt/flink/conf
+      - ./flink-plugins/s3:/opt/flink/plugins/s3
+      - ./flink-lib:/opt/flink/lib
+
+  # ---------------------------------------------------------
+  # KAFKA BROKER (single-node KRaft mode)
+  # ---------------------------------------------------------
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka-latest-test-124
+    networks:
+      - flink-kafka-net
+    ports:
+      - "9092:9092"                       # External Kafka port
+    environment:
+      KAFKA_NODE_ID: "1"                  # Required for KRaft mode
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-latest-test-124:9093"
+
+      # Listener configuration
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-latest-test-124:29092,EXTERNAL://localhost:9092"
+
+      # Protocol mapping
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+
+      # Required for KRaft
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      # Transaction log settings (needed for Flink exactly-once)
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
