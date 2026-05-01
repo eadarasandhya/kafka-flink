@@ -8,34 +8,82 @@ import org.apache.flink.core.execution.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
+/**
+ * KafkaFlinkJob
+ *
+ * A simple Flink streaming job that:
+ *  - Connects to a Kafka topic
+ *  - Reads messages with no watermarking
+ *  - Prints messages to stdout
+ *  - Uses exactly-once checkpointing for reliability
+ *
+ * Demonstrates:
+ *  - Basic KafkaSource setup
+ *  - Flink checkpoint configuration
+ *  - Minimal streaming pipeline
+ */
 public class KafkaFlinkJob {
 
+    /**
+     * Main entry point for the application.
+     * Delegates execution to flinkKafkaProcess().
+     *
+     * @param args command-line arguments (unused)
+     * @throws Exception if the Flink job fails
+     */
     public static void main(String[] args) throws Exception {
         flinkKafkaProcess();
     }
 
+    /**
+     * Builds and executes a Flink streaming pipeline that:
+     *  - Enables exactly-once checkpointing
+     *  - Reads from Kafka topic "qwerty"
+     *  - Prints all consumed messages
+     *
+     * Includes recommended checkpointing settings for stability.
+     *
+     * @throws Exception if the Flink job execution fails
+     */
+    protected static void flinkKafkaProcess() throws Exception {
 
-        protected static void flinkKafkaProcess() throws Exception {
-            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-            env.enableCheckpointing(60000); // every 60 seconds
-            env.getCheckpointConfig().setCheckpointingMode( org.apache.flink.streaming.api.CheckpointingMode.EXACTLY_ONCE);
-            env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30000);
-            env.getCheckpointConfig().setCheckpointTimeout(60000);
-            env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        // Create Flink execution environment
 
-            // ✅ Use the IP and Internal Port that just worked in your terminal test
-            KafkaSource<String> source = KafkaSource.<String>builder()
-                    .setBootstrapServers("172.18.0.2:29092")
-                    .setTopics("qwerty")
-                    .setGroupId("demo-group")
-                    // 👇 Change this to read the existing "test" and "sandhya" messages
-                    .setStartingOffsets(OffsetsInitializer.earliest())
-                    .setValueOnlyDeserializer(new SimpleStringSchema())
-                    .build();
+        env.enableCheckpointing(60000); // every 60 seconds
+        // Enable periodic checkpointing
 
-            DataStreamSource<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
-            stream.print();
-            env.execute("Flink Kafka Reader - qwerty");
-        }
+        env.getCheckpointConfig().setCheckpointingMode(
+                org.apache.flink.streaming.api.CheckpointingMode.EXACTLY_ONCE);
+        // Enable exactly-once processing
+
+        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30000);
+        // Minimum pause between checkpoints
+
+        env.getCheckpointConfig().setCheckpointTimeout(60000);
+        // Timeout for checkpoint completion
+
+        env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
+        // Allow only one checkpoint at a time
+
+        // Kafka Source configuration
+        KafkaSource<String> source = KafkaSource.<String>builder()
+                .setBootstrapServers("172.18.0.2:29092")  // Kafka broker
+                .setTopics("qwerty")                      // Topic name
+                .setGroupId("demo-group")                 // Consumer group
+                .setStartingOffsets(OffsetsInitializer.earliest()) // Read from earliest
+                .setValueOnlyDeserializer(new SimpleStringSchema()) // Deserialize values
+                .build();
+
+        DataStreamSource<String> stream =
+                env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
+        // Create stream from Kafka source
+
+        stream.print();
+        // Print messages to stdout
+
+        env.execute("Flink Kafka Reader - qwerty");
+        // Execute Flink job
+    }
 
 }
